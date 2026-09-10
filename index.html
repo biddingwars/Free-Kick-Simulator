@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Free Kick Simulator</title>
+<style>
+  :root{
+    color-scheme: dark;
+    --panel-bg: rgba(10,10,20,0.55);
+    --panel-border: rgba(255,255,255,0.12);
+  }
+  *{ box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html,body{
+    margin:0; padding:0; width:100%; height:100%;
+    background:#05040a; overflow:hidden;
+    font-family: 'Arial Narrow', Arial, Helvetica, sans-serif;
+    touch-action:none; user-select:none;
+  }
+  #canvasWrap{ position:fixed; inset:0; }
+  canvas#game{ display:block; width:100%; height:100%; }
+
+  #hud{ position:fixed; inset:0; pointer-events:none; z-index:5; }
+  .hud-el{ pointer-events:auto; }
+
+  /* top bars */
+  #topBar{ position:absolute; top:0; left:0; right:0; display:flex; align-items:flex-start; justify-content:space-between; padding:10px 14px; }
+  #scoreBox{
+    background:var(--panel-bg); border:1px solid var(--panel-border); border-radius:10px;
+    padding:6px 14px 8px; color:#fff; min-width:90px; backdrop-filter: blur(4px);
+  }
+  #scoreVal{ font-size:30px; font-weight:800; line-height:1; letter-spacing:0.5px; }
+  #levelRow{ display:flex; align-items:center; gap:4px; margin-top:2px; font-size:15px; font-weight:700; color:#4ee44e; }
+  #levelRow svg{ width:15px; height:15px; }
+  #scorePopup{
+    position:absolute; left:6px; top:-4px; font-size:16px; font-weight:800; color:#4ee44e;
+    opacity:0; transform:translateY(0px); pointer-events:none; text-shadow:0 0 6px rgba(0,0,0,.6);
+  }
+  #scorePopup.show{ animation: popup 0.9s ease-out forwards; }
+  @keyframes popup{
+    0%{ opacity:0; transform:translateY(6px) scale(0.8); }
+    15%{ opacity:1; transform:translateY(-4px) scale(1.1); }
+    35%{ opacity:1; transform:translateY(-14px) scale(1); }
+    100%{ opacity:0; transform:translateY(-34px) scale(1); }
+  }
+
+  #livesBox{
+    background:var(--panel-bg); border:1px solid var(--panel-border); border-radius:10px;
+    padding:6px 12px 8px; color:#fff; text-align:center; backdrop-filter: blur(4px);
+  }
+  #livesIcons{ display:flex; gap:6px; justify-content:center; }
+  .lifeIcon{ width:22px; height:22px; position:relative; }
+  .lifeIcon .ball{ width:100%; height:100%; border-radius:50%;
+    background: radial-gradient(circle at 32% 30%, #fff, #cfd6db 40%, #9098a1 70%, #5b6268 100%);
+    box-shadow: inset 0 0 3px rgba(0,0,0,.5);
+    background-image:
+      radial-gradient(circle at 32% 30%, #fff, #cfd6db 40%, #9098a1 70%, #5b6268 100%);
+  }
+  .lifeIcon.lost .ball{ opacity:0; }
+  .lifeIcon .x{ position:absolute; inset:0; display:none; align-items:center; justify-content:center;
+    font-weight:900; color:#ff3b3b; font-size:19px; text-shadow:0 0 4px rgba(0,0,0,.6); }
+  .lifeIcon.lost .x{ display:flex; }
+  #livesLabel{ font-size:11px; font-weight:800; letter-spacing:2px; margin-top:3px; color:#eee; }
+
+  #distBox{
+    background:var(--panel-bg); border:1px solid var(--panel-border); border-radius:10px;
+    padding:5px 10px; color:#fff; font-size:12px; font-weight:700; text-align:center;
+  }
+
+  /* center banners */
+  #centerBanner{
+    position:absolute; left:50%; top:38%; transform:translate(-50%,-50%) scale(0.7); z-index:6;
+    font-size:54px; font-weight:900; letter-spacing:2px; color:#fff; opacity:0;
+    text-shadow: 0 0 18px rgba(255,220,60,0.9), 0 4px 0 rgba(0,0,0,0.5); white-space:nowrap;
+    -webkit-text-stroke: 2px rgba(0,0,0,0.35);
+  }
+  #centerBanner.goal{ color:#ffe94e; }
+  #centerBanner.save{ color:#6fb8ff; }
+  #centerBanner.miss{ color:#ff6b6b; }
+  #centerBanner.show{ animation: bannerPop 1.3s cubic-bezier(.2,1.3,.4,1) forwards; }
+  @keyframes bannerPop{
+    0%{ opacity:0; transform:translate(-50%,-50%) scale(0.4) rotate(-4deg); }
+    18%{ opacity:1; transform:translate(-50%,-50%) scale(1.15) rotate(2deg); }
+    30%{ transform:translate(-50%,-50%) scale(1) rotate(0deg); }
+    80%{ opacity:1; }
+    100%{ opacity:0; transform:translate(-50%,-58%) scale(1); }
+  }
+
+  #subBanner{
+    position:absolute; left:50%; top:47%; transform:translate(-50%,-50%); z-index:6;
+    font-size:16px; font-weight:700; color:#fff; opacity:0; letter-spacing:1px;
+  }
+  #subBanner.show{ animation: subFade 1.3s ease-out forwards; }
+  @keyframes subFade{ 0%{opacity:0;} 25%{opacity:.9;} 75%{opacity:.9;} 100%{opacity:0; transform:translate(-50%,-40%);} }
+
+  /* power / aim HUD */
+  #powerWrap{
+    position:absolute; right:14px; bottom:120px; width:16px; height:140px;
+    background:rgba(0,0,0,0.35); border:1px solid var(--panel-border); border-radius:8px; overflow:hidden;
+    opacity:0; transition:opacity .15s;
+  }
+  #powerWrap.show{ opacity:1; }
+  #powerFill{ position:absolute; bottom:0; left:0; right:0; height:0%;
+    background:linear-gradient(#ffe94e,#ff7b3d,#ff2d2d); }
+
+  #curveIndicator{
+    position:absolute; left:50%; bottom:120px; transform:translateX(-50%);
+    font-size:12px; font-weight:800; color:#fff; background:rgba(0,0,0,0.4); padding:3px 10px; border-radius:6px;
+    opacity:0; transition:opacity .15s; letter-spacing:1px;
+  }
+  #curveIndicator.show{ opacity:1; }
+
+  #hint{
+    position:absolute; left:50%; bottom:74px; transform:translateX(-50%);
+    font-size:13px; color:rgba(255,255,255,.85); background:rgba(0,0,0,0.35); padding:6px 14px; border-radius:20px;
+    letter-spacing:.5px; transition:opacity .3s;
+  }
+
+  /* sponsor marquee */
+  #sponsorBar{
+    position:absolute; left:0; right:0; bottom:0; height:34px; overflow:hidden;
+    background:linear-gradient(#1a1a1a,#0a0a0a); border-top:2px solid #f4c400;
+  }
+  #sponsorTrack{ display:flex; align-items:center; height:100%; white-space:nowrap; width:max-content;
+    animation: marquee 18s linear infinite; }
+  .sp-item{ display:inline-flex; align-items:center; gap:6px; padding:0 20px; color:#f4c400; font-weight:800; font-size:14px; letter-spacing:1px; }
+  .sp-item span.w{ color:#fff; }
+  @keyframes marquee{ from{ transform:translateX(0); } to{ transform:translateX(-50%); } }
+
+  /* top-right controls */
+  #topRight{ display:flex; gap:8px; }
+  .iconBtn{
+    width:34px; height:34px; border-radius:8px; background:var(--panel-bg); border:1px solid var(--panel-border);
+    color:#fff; display:flex; align-items:center; justify-content:center; cursor:pointer; font-size:16px;
+  }
+  .iconBtn:active{ transform:scale(0.92); }
+
+  /* preset menu */
+  #presetMenu{
+    position:absolute; top:52px; right:10px; background:rgba(10,10,20,0.92); border:1px solid var(--panel-border);
+    border-radius:10px; padding:8px; display:none; flex-direction:column; gap:4px; min-width:190px; z-index:20;
+  }
+  #presetMenu.open{ display:flex; }
+  #presetMenu button{
+    background:#171722; color:#fff; border:1px solid #2b2b3a; border-radius:6px; padding:8px 10px;
+    font-size:12.5px; text-align:left; cursor:pointer;
+  }
+  #presetMenu button:hover{ background:#242438; }
+  #presetMenu .ttl{ font-size:11px; color:#888; padding:2px 4px; letter-spacing:1px; }
+
+  /* overlays */
+  .overlay{
+    position:fixed; inset:0; background:rgba(2,2,8,0.82); display:none; align-items:center; justify-content:center;
+    z-index:50; flex-direction:column; text-align:center; padding:20px;
+  }
+  .overlay.show{ display:flex; }
+  .overlay h1{ color:#fff; font-size:40px; margin:0 0 6px; letter-spacing:1px; }
+  .overlay h1.gold{ color:#ffe94e; text-shadow:0 0 16px rgba(255,220,60,.6); }
+  .overlay p{ color:#bbb; margin:4px 0 18px; font-size:15px; }
+  .bigBtn{
+    background:linear-gradient(#4ee44e,#1f9c1f); color:#04270c; border:none; border-radius:30px;
+    padding:14px 40px; font-size:17px; font-weight:800; letter-spacing:1px; cursor:pointer; box-shadow:0 6px 0 #0d5a12;
+  }
+  .bigBtn:active{ transform:translateY(3px); box-shadow:0 3px 0 #0d5a12; }
+  .statRow{ display:flex; gap:28px; margin-bottom:18px; }
+  .statCol{ color:#fff; }
+  .statCol b{ display:block; font-size:26px; color:#ffe94e; }
+  .statCol span{ font-size:11px; color:#999; letter-spacing:1px; }
+
+  #startOverlay .logo{ font-size:15px; letter-spacing:6px; color:#f4c400; font-weight:800; margin-bottom:6px; }
+  #startOverlay h1{ font-size:38px; }
+
+  @media (max-width:480px){
+    #centerBanner{ font-size:38px; }
+    .overlay h1{ font-size:30px; }
+    #scoreVal{ font-size:24px; }
+  }
+</style>
+</head>
+<body>
+
+<div id="canvasWrap"><canvas id="game"></canvas></div>
+
+<div id="hud">
+  <div id="topBar">
+    <div id="scoreBox" class="hud-el">
+      <div style="position:relative;">
+        <div id="scoreVal">0</div>
+        <div id="scorePopup">+10</div>
+      </div>
+      <div id="levelRow">
+        <svg viewBox="0 0 24 24" fill="#4ee44e"><path d="M5 16L3 5l5.5 4L12 4l3.5 5L21 5l-2 11H5zm0 2h14v2H5v-2z"/></svg>
+        <span id="levelVal">1</span>
+      </div>
+    </div>
+
+    <div id="livesBox" class="hud-el">
+      <div id="livesIcons"></div>
+      <div id="livesLabel">LIVES</div>
+    </div>
+
+    <div style="display:flex; flex-direction:column; align-items:flex-end; gap:6px;">
+      <div id="topRight" class="hud-el">
+        <div class="iconBtn" id="btnPreset" title="Free kick scenarios">🎯</div>
+        <div class="iconBtn" id="btnPause">⏸</div>
+        <div class="iconBtn" id="btnMute">🔊</div>
+      </div>
+      <div id="distBox" class="hud-el">— m FREE KICK</div>
+    </div>
+  </div>
+
+  <div id="presetMenu" class="hud-el">
+    <div class="ttl">FAMOUS MOMENTS</div>
+    <button data-preset="0">⚽ Practice — Center 20m</button>
+    <button data-preset="1">🇧🇷 Roberto Carlos Angle — 35m Left</button>
+    <button data-preset="2">🇦🇷 Messi Curler — 18m Right Edge</button>
+    <button data-preset="3">🏴 Beckham Special — 25m Center</button>
+    <button data-preset="4">🎯 Sniper — 12m Tight Angle</button>
+  </div>
+
+  <div id="centerBanner">GOAL!!!</div>
+  <div id="subBanner"></div>
+
+  <div id="curveIndicator" class="hud-el">CURVE ►</div>
+  <div id="powerWrap" class="hud-el"><div id="powerFill"></div></div>
+  <div id="hint" class="hud-el">Drag from the ball to aim — release to shoot</div>
+
+  <div id="sponsorBar">
+    <div id="sponsorTrack"></div>
+  </div>
+</div>
+
+<div id="startOverlay" class="overlay show">
+  <div class="logo">★ ARCADE ★</div>
+  <h1 class="gold">FREE KICK<br>SIMULATOR</h1>
+  <p>Curl it past the keeper. Hit the targets. Don't run out of lives.</p>
+  <button class="bigBtn" id="btnStart">TAP TO PLAY</button>
+</div>
+
+<div id="gameOverOverlay" class="overlay">
+  <h1>GAME OVER</h1>
+  <div class="statRow">
+    <div class="statCol"><b id="finalScore">0</b><span>SCORE</span></div>
+    <div class="statCol"><b id="finalLevel">1</b><span>LEVEL</span></div>
+    <div class="statCol"><b id="finalBest">0</b><span>BEST</span></div>
+  </div>
+  <button class="bigBtn" id="btnRetry">PLAY AGAIN</button>
+</div>
+
+<div id="pauseOverlay" class="overlay">
+  <h1>PAUSED</h1>
+  <button class="bigBtn" id="btnResume">RESUME</button>
+</div>
+
+<script src="js/three.min.js"></script>
+<script src="js/game.js"></script>
+</body>
+</html>
